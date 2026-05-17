@@ -2,8 +2,10 @@ import { GameState, Vec2 } from './types';
 import {
   RINK_WIDTH, RINK_HEIGHT, PLAYER_RADIUS,
   BACKCHECK_DEPTH, GOAL_DEPTH,
+  STEAL_MAX_DIST, STEAL_MIN_DIST, STEAL_CHANCE_FAR, STEAL_CHANCE_NEAR,
+  STEAL_DIR_BONUS, STEAL_DIR_PENALTY, MIN_SPEED,
 } from './constants';
-import { v2, v2Distance } from './physics';
+import { v2, v2Distance, v2Length, v2Normalize, v2Sub, v2Dot } from './physics';
 
 // ── Matrix / vector utilities ──
 
@@ -61,9 +63,11 @@ export interface ForwardCache {
   postAct: number[][];
 }
 
-export const NUM_FEATURES = 13;
+export const NUM_FEATURES = 20;
 export const NUM_ACTIONS = 10;
 export const NETWORK_SIZES = [NUM_FEATURES, 512, 512, 256, 128, NUM_ACTIONS];
+
+const STEAL_BUDGET = 5; // matches DECISION_BUDGET
 
 export class PolicyNetwork {
   layers: Layer[];
@@ -148,7 +152,38 @@ export class PolicyNetwork {
 
 // ── State encoding (from acting player's perspective) ──
 
-export function encodeState(state: GameState, playerIdx: number): number[] {
+function computeStealChance(state: GameState, playerIdx: number): number {
+  if (state.possession === playerIdx) return 0; // already have puck
+  const me = state.players[playerIdx];
+  const carrier = state.players[state.possession];
+  const dist = v2Distance(me.pos, carrier.pos);
+  if (dist > STEAL_MAX_DIST) return 0;
+  if (me.stealLockTimer > 0) return 0;
+
+  let chance: number;
+  if (dist <= STEAL_MIN_DIST) {
+    chance = STEAL_CHANCE_NEAR;
+  } else {
+    const t = (dist - STEAL_MIN_DIST) / (STEAL_MAX_DIST - STEAL_MIN_DIST);
+    chance = STEAL_CHANCE_NEAR + t * (STEAL_CHANCE_FAR - STEAL_CHANCE_NEAR);
+  }
+
+  const carrierSpeed = v2Length(carrier.vel);
+  if (carrierSpeed > MIN_SPEED) {
+    const toStealer = v2Normalize(v2Sub(me.pos, carrier.pos));
+    const carrierDir = v2Normalize(carrier.vel);
+    const dot = v2Dot(carrierDir, toStealer);
+    if (dot > 0) {
+      chance += dot * STEAL_DIR_BONUS;
+    } else {
+      chance += dot * STEAL_DIR_PENALTY;
+    }
+    chance = Math.max(0.05, Math.min(0.85, chance));
+  }
+  return chance;
+}
+
+export function encodeState(state: GameState, playerIdx: number, decisionTokens: number = STEAL_BUDGET): number[] {
   const me = state.players[playerIdx];
   const opp = state.players[1 - playerIdx];
   const hasPuck = state.possession === playerIdx;
@@ -169,6 +204,14 @@ export function encodeState(state: GameState, playerIdx: number): number[] {
     (goalX - me.pos.x) / RINK_WIDTH,
     (goalY - me.pos.y) / RINK_HEIGHT,
     v2Distance(me.pos, opp.pos) / RINK_WIDTH,
+    // New features
+    me.destination ? me.destination.x / RINK_WIDTH : me.pos.x / RINK_WIDTH,
+    me.destination ? me.destination.y / RINK_HEIGHT : me.pos.y / RINK_HEIGHT,
+    decisionTokens / STEAL_BUDGET,
+    me.lockDirection ? 1 : 0,
+    computeStealChance(state, playerIdx),
+    hasPuck ? 0 : 1, // opp has puck
+    opp.lockDirection ? 1 : 0,
   ];
 }
 
@@ -258,7 +301,7 @@ export class AIAgent {
     this.decisionTokens -= 1;
     this.stepsSinceLastDecision = 0;
 
-    const features = encodeState(state, playerIdx);
+    const features = encodeState(state, playerIdx, this.decisionTokens);
     const { probs, cache } = this.network.forward(features);
 
     let action: number;
