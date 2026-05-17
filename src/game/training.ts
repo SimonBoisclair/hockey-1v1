@@ -5,6 +5,10 @@ import {
 import { FIXED_DT, RINK_WIDTH } from './constants';
 import { AIAgent, trainAgent, PolicyNetwork, NETWORK_SIZES } from './ai';
 
+// Inactivity penalty: penalize agents that don't decide for 5+ seconds
+const INACTIVITY_THRESHOLD = 300; // 5 seconds at 60fps
+const INACTIVITY_PENALTY = -0.001;
+
 // ── Training stats ──
 
 export interface EpisodeResult {
@@ -128,6 +132,12 @@ export class Trainer {
         if (state.possession === 1 && this.agent1.trajectory.length > 0)
           this.agent1.trajectory[this.agent1.trajectory.length - 1].reward += prog;
       }
+
+      // Inactivity penalty: penalize agents that haven't decided in 5+ seconds
+      if (this.agent0.stepsSinceLastDecision > INACTIVITY_THRESHOLD && this.agent0.trajectory.length > 0)
+        this.agent0.trajectory[this.agent0.trajectory.length - 1].reward += INACTIVITY_PENALTY;
+      if (this.agent1.stepsSinceLastDecision > INACTIVITY_THRESHOLD && this.agent1.trajectory.length > 0)
+        this.agent1.trajectory[this.agent1.trajectory.length - 1].reward += INACTIVITY_PENALTY;
     }
 
     // Train both agents
