@@ -7,7 +7,7 @@ import { createInitialState, gameStep, attemptSteal } from './game/physics';
 import { render } from './game/renderer';
 import { AIAgent, PolicyNetwork, NETWORK_SIZES } from './game/ai';
 import { Trainer, TrainingStats } from './game/training';
-import { listModels, getModel, saveModel, deleteModel, SavedModel } from './api';
+import { listModels, getModel, saveModel, deleteModel, SavedModel, startGPUTraining, stopGPUTraining, getTrainingStatus, TrainingStatus } from './api';
 import './App.css';
 
 type GameMode = 'practice' | 'training' | 'play-ai' | 'admin';
@@ -38,6 +38,11 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [loadingModel, setLoadingModel] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [gpuStatus, setGpuStatus] = useState<TrainingStatus | null>(null);
+  const [gpuModelName, setGpuModelName] = useState('gpu-trained');
+  const [gpuEpisodes, setGpuEpisodes] = useState(100000);
+  const [gpuStarting, setGpuStarting] = useState(false);
+  const gpuPollRef = useRef<number>(0);
 
   const PADDING = 10;
 
@@ -160,6 +165,48 @@ function App() {
       setStatusMsg('Failed to delete model');
     }
   }, [fetchModels]);
+
+  // GPU Training
+  const pollGpuStatus = useCallback(async () => {
+    try {
+      const status = await getTrainingStatus();
+      setGpuStatus(status);
+      if (status.status === 'completed' || status.status === 'stopped' || status.status === 'idle') {
+        clearInterval(gpuPollRef.current);
+        gpuPollRef.current = 0;
+      }
+    } catch { /* ignore */ }
+  }, []);
+
+  const handleStartGPU = useCallback(async () => {
+    if (!gpuModelName.trim()) return;
+    setGpuStarting(true);
+    setStatusMsg('');
+    try {
+      const result = await startGPUTraining({
+        model_name: gpuModelName.trim(),
+        episodes: gpuEpisodes,
+      });
+      setStatusMsg(`GPU pod starting... ($${result.cost_per_hr}/hr)`);
+      setGpuStatus({ status: 'starting', model_name: gpuModelName, total_episodes: gpuEpisodes });
+      if (gpuPollRef.current) clearInterval(gpuPollRef.current);
+      gpuPollRef.current = window.setInterval(pollGpuStatus, 5000);
+    } catch (e) {
+      setStatusMsg(`Failed to start GPU: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+    setGpuStarting(false);
+  }, [gpuModelName, gpuEpisodes, pollGpuStatus]);
+
+  const handleStopGPU = useCallback(async () => {
+    try {
+      await stopGPUTraining();
+      setStatusMsg('GPU training stopped');
+      if (gpuPollRef.current) clearInterval(gpuPollRef.current);
+      setGpuStatus(prev => prev ? { ...prev, status: 'stopped' } : null);
+    } catch {
+      setStatusMsg('Failed to stop GPU training');
+    }
+  }, []);
 
   // Mode switching
   const switchMode = useCallback((newMode: GameMode) => {
@@ -403,9 +450,92 @@ function App() {
             onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
           />
           <button className="ctrl-btn save-btn" onClick={handleSave} disabled={saving || !saveName.trim() || !networkRef.current}>
-            {saving ? 'Saving...' : '💾 Save'}
+            {saving ? 'Saving...' : 'Save'}
           </button>
           {statusMsg && <span className="status-msg">{statusMsg}</span>}
+        </div>
+      )}
+
+      {mode === 'training' && (
+        <div className="gpu-panel">
+          <h3>GPU Training (RunPod A100)</h3>
+          {(!gpuStatus || gpuStatus.status === 'idle' || gpuStatus.status === 'stopped' || gpuStatus.status === 'completed') ? (
+            <div className="gpu-start-form">
+              <div className="gpu-form-row">
+                <label>Model Name</label>
+                <input
+                  type="text"
+                  className="save-input"
+                  value={gpuModelName}
+                  onChange={(e) => setGpuModelName(e.target.value)}
+                />
+              </div>
+              <div className="gpu-form-row">
+                <label>Episodes</label>
+                <select className="gpu-select" value={gpuEpisodes} onChange={(e) => setGpuEpisodes(Number(e.target.value))}>
+                  <option value={10000}>10,000</option>
+                  <option value={50000}>50,000</option>
+                  <option value={100000}>100,000</option>
+                  <option value={500000}>500,000</option>
+                  <option value={1000000}>1,000,000</option>
+                </select>
+              </div>
+              <button
+                className="ctrl-btn gpu-start-btn"
+                onClick={handleStartGPU}
+                disabled={gpuStarting || !gpuModelName.trim()}
+              >
+                {gpuStarting ? 'Starting...' : 'Train on GPU (~$3/hr)'}
+              </button>
+              {gpuStatus?.status === 'completed' && <span className="status-msg gpu-done">Training completed!</span>}
+              {gpuStatus?.status === 'stopped' && <span className="status-msg">Training stopped</span>}
+            </div>
+          ) : (
+            <div className="gpu-monitor">
+              <div className="gpu-status-badge">{gpuStatus.status === 'starting' ? 'Starting pod...' : 'Training'}</div>
+              {gpuStatus.episode !== undefined && (
+                <div className="gpu-stats">
+                  <div className="stat">
+                    <span className="stat-label">Progress</span>
+                    <span className="stat-value">{gpuStatus.episode?.toLocaleString()} / {gpuStatus.total_episodes?.toLocaleString()}</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-label">Blue W</span>
+                    <span className="stat-value blue">{gpuStatus.blue_wins?.toLocaleString()}</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-label">Red W</span>
+                    <span className="stat-value red">{gpuStatus.red_wins?.toLocaleString()}</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-label">Draws</span>
+                    <span className="stat-value">{gpuStatus.draws?.toLocaleString()}</span>
+                  </div>
+                  <div className="stat">
+                    <span className="stat-label">Speed</span>
+                    <span className="stat-value">{gpuStatus.eps_per_sec?.toFixed(1)} ep/s</span>
+                  </div>
+                  {gpuStatus.cost_per_hr && (
+                    <div className="stat">
+                      <span className="stat-label">Cost</span>
+                      <span className="stat-value">${gpuStatus.cost_per_hr}/hr</span>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="gpu-progress-bar">
+                <div className="gpu-progress-fill" style={{ width: `${Math.min(100, ((gpuStatus.episode || 0) / (gpuStatus.total_episodes || 1)) * 100)}%` }} />
+              </div>
+              <div className="gpu-actions">
+                <button className="ctrl-btn load-btn" onClick={() => { fetchModels(); switchMode('admin'); }}>
+                  Load Latest
+                </button>
+                <button className="ctrl-btn stop-btn" onClick={handleStopGPU}>
+                  Stop Training
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
