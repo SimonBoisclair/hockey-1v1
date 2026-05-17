@@ -138,7 +138,7 @@ function App() {
     setSaving(false);
   }, [saveName, trainingStats, fetchModels]);
 
-  const handleLoad = useCallback(async (id: number) => {
+  const handleLoad = useCallback(async (id: string) => {
     setLoadingModel(true);
     setStatusMsg('');
     try {
@@ -155,7 +155,7 @@ function App() {
     setLoadingModel(false);
   }, []);
 
-  const handleDelete = useCallback(async (id: number, name: string) => {
+  const handleDelete = useCallback(async (id: string, name: string) => {
     if (!confirm(`Delete model "${name}"?`)) return;
     try {
       await deleteModel(id);

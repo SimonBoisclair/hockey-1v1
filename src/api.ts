@@ -1,7 +1,7 @@
 const API_URL = import.meta.env.VITE_API_URL || 'https://hockey-api-zrey.onrender.com';
 
 export interface SavedModel {
-  id: number;
+  id: string;
   name: string;
   episodes: number;
   blue_wins: number;
@@ -18,7 +18,7 @@ export async function listModels(): Promise<SavedModel[]> {
   return res.json();
 }
 
-export async function getModel(id: number): Promise<SavedModel> {
+export async function getModel(id: string): Promise<SavedModel> {
   const res = await fetch(`${API_URL}/models/${id}`);
   if (!res.ok) throw new Error('Failed to get model');
   return res.json();
@@ -41,7 +41,7 @@ export async function saveModel(data: {
   return res.json();
 }
 
-export async function updateModel(id: number, data: {
+export async function updateModel(id: string, data: {
   name?: string;
   weights?: string;
   episodes?: number;
@@ -58,7 +58,7 @@ export async function updateModel(id: number, data: {
   return res.json();
 }
 
-export async function deleteModel(id: number): Promise<void> {
+export async function deleteModel(id: string): Promise<void> {
   const res = await fetch(`${API_URL}/models/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error('Failed to delete model');
 }
