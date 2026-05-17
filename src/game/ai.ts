@@ -63,7 +63,7 @@ export interface ForwardCache {
 
 export const NUM_FEATURES = 13;
 export const NUM_ACTIONS = 10;
-export const NETWORK_SIZES = [NUM_FEATURES, 64, 32, NUM_ACTIONS];
+export const NETWORK_SIZES = [NUM_FEATURES, 512, 512, 256, 128, NUM_ACTIONS];
 
 export class PolicyNetwork {
   layers: Layer[];
