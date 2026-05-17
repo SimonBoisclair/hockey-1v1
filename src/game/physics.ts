@@ -280,6 +280,19 @@ function updateBackcheck(player: Player): void {
 
 // ── Steal ──
 
+function enforceGoalZoneRestriction(player: Player): void {
+  const goalZoneX = RINK_WIDTH - GOAL_DEPTH;
+  const goalY = (RINK_HEIGHT - GOAL_WIDTH) / 2;
+  // Only restrict if player is within the goal zone's vertical range
+  if (player.pos.y >= goalY && player.pos.y <= goalY + GOAL_WIDTH) {
+    // Non-carrier center cannot go past goalZoneX (half body allowed in)
+    if (player.pos.x > goalZoneX) {
+      player.pos.x = goalZoneX;
+      if (player.vel.x > 0) player.vel.x = 0;
+    }
+  }
+}
+
 export function attemptSteal(state: GameState, stealerIndex: number): { success: boolean; message: string } {
   if (state.possession === stealerIndex) {
     return { success: false, message: '' };
@@ -385,6 +398,10 @@ export function gameStep(state: GameState, dt: number): void {
 
   // Player-player collision
   handlePlayerCollision(state.players[0], state.players[1]);
+
+  // Non-carrier cannot enter more than half body into goal zone
+  const nonCarrierIdx = 1 - state.possession;
+  enforceGoalZoneRestriction(state.players[nonCarrierIdx]);
 
   // Update backcheck status
   const carrier = state.players[state.possession];
