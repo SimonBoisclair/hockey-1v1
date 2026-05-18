@@ -519,6 +519,148 @@ kbd {
   font-size: 13px;
 }
 
+/* ── Level training cards ── */
+.training-levels {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  max-width: 600px;
+  width: 100%;
+  align-self: center;
+}
+
+.training-levels h3 {
+  text-align: center;
+  font-size: 18px;
+  color: #e0e0e0;
+}
+
+.level-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.level-card.complete {
+  border-color: rgba(76, 175, 80, 0.4);
+  background: rgba(76, 175, 80, 0.06);
+}
+
+.level-card.active {
+  border-color: rgba(56, 189, 248, 0.5);
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.level-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.level-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.level-label {
+  font-size: 12px;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.level-progress-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.level-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #38bdf8, #22d3ee);
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.level-card.complete .level-progress-fill {
+  background: linear-gradient(90deg, #4caf50, #81c784);
+}
+
+.level-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #999;
+}
+
+.level-done {
+  color: #81c784;
+  font-weight: 600;
+}
+
+.level-locked {
+  font-size: 12px;
+  color: #666;
+  text-align: center;
+  padding: 4px 0;
+}
+
+/* ── Level select for play ── */
+.level-select {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  max-width: 500px;
+  width: 100%;
+  align-self: center;
+}
+
+.level-select h3 {
+  text-align: center;
+  font-size: 20px;
+  color: #e0e0e0;
+}
+
+.level-pick-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.level-pick-card:hover:not(.locked) {
+  border-color: rgba(56, 189, 248, 0.5);
+}
+
+.level-pick-card.locked {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.level-pick-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.level-pick-meta {
+  font-size: 12px;
+  color: #888;
+}
+
 /* ── Portrait mobile layout ── */
 .portrait {
   padding: 0;
