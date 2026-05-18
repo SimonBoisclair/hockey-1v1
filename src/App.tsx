@@ -5,12 +5,22 @@ import {
 } from './game/constants';
 import { createInitialState, gameStep, attemptSteal } from './game/physics';
 import { render } from './game/renderer';
-import { AIAgent, PolicyNetwork, NETWORK_SIZES } from './game/ai';
+import { AIAgent, PolicyNetwork } from './game/ai';
 import { Trainer, TrainingStats } from './game/training';
-import { listModels, getModel, saveModel, deleteModel, SavedModel } from './api';
+import { listModels, getModel, saveModel, updateModel, deleteModel, SavedModel } from './api';
 import './App.css';
 
 type GameMode = 'practice' | 'training' | 'play-ai' | 'admin';
+
+const AI_LEVELS = [
+  { level: 1, name: 'Level 1', label: 'Beginner', target: 1_000_000 },
+  { level: 2, name: 'Level 2', label: 'Intermediate', target: 5_000_000 },
+  { level: 3, name: 'Level 3', label: 'Advanced', target: 10_000_000 },
+] as const;
+
+function modelNameForLevel(level: number): string {
+  return `AI-Level-${level}`;
+}
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -41,6 +51,10 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [loadingModel, setLoadingModel] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [trainingLevel, setTrainingLevel] = useState<number | null>(null);
+  const [levelModels, setLevelModels] = useState<Record<number, SavedModel | null>>({});
+  const [playLevel, setPlayLevel] = useState<number | null>(null);
+  const autoSavedRef = useRef(false);
 
   const PADDING = 10;
 
@@ -68,8 +82,8 @@ function App() {
       const internalH = RINK_WIDTH * s + PADDING * 2;
       canvas.width = internalW * dpr;
       canvas.height = internalH * dpr;
-      canvas.style.width = displayW + 'px';
-      canvas.style.height = displayH + 'px';
+      canvas.style.width = internalW + 'px';
+      canvas.style.height = internalH + 'px';
       const ctx = canvas.getContext('2d');
       if (ctx) ctx.scale(dpr, dpr);
       scaleRef.current = s;
@@ -156,6 +170,11 @@ function App() {
     try {
       const models = await listModels();
       setSavedModels(models);
+      const lvlMap: Record<number, SavedModel | null> = {};
+      for (const lvl of AI_LEVELS) {
+        lvlMap[lvl.level] = models.find(m => m.name === modelNameForLevel(lvl.level)) || null;
+      }
+      setLevelModels(lvlMap);
     } catch {
       console.error('Failed to fetch models');
     }
@@ -213,21 +232,106 @@ function App() {
     }
   }, [fetchModels]);
 
+  const autoSaveLevel = useCallback(async (level: number) => {
+    const net = networkRef.current;
+    if (!net) return;
+    const name = modelNameForLevel(level);
+    const stats = trainerRef.current?.stats;
+    const data = {
+      name,
+      weights: net.serialize(),
+      episodes: stats?.episode || 0,
+      blue_wins: stats?.blueWins || 0,
+      red_wins: stats?.redWins || 0,
+      draws: stats?.draws || 0,
+    };
+    try {
+      const existing = savedModels.find(m => m.name === name);
+      if (existing) {
+        await updateModel(existing.id, {
+          weights: data.weights, episodes: data.episodes,
+          blue_wins: data.blue_wins, red_wins: data.red_wins, draws: data.draws,
+        });
+      } else {
+        await saveModel(data);
+      }
+      await fetchModels();
+      setStatusMsg(`Level ${level} saved!`);
+    } catch {
+      setStatusMsg(`Failed to save Level ${level}`);
+    }
+  }, [savedModels, fetchModels]);
+
+  const startLevelTraining = useCallback(async (level: number) => {
+    setTrainingLevel(level);
+    autoSavedRef.current = false;
+    const prevLevel = level > 1 ? levelModels[level - 1] : null;
+    const currentLevelModel = levelModels[level];
+    let net: PolicyNetwork | undefined;
+    if (currentLevelModel?.weights) {
+      try {
+        const fullModel = await getModel(currentLevelModel.id);
+        net = PolicyNetwork.deserialize(fullModel.weights!);
+        setStatusMsg(`Resuming Level ${level} training...`);
+      } catch { /* fallthrough */ }
+    } else if (prevLevel?.weights !== undefined && prevLevel) {
+      try {
+        const fullModel = await getModel(prevLevel.id);
+        net = PolicyNetwork.deserialize(fullModel.weights!);
+        setStatusMsg(`Starting Level ${level} from Level ${level - 1}...`);
+      } catch { /* fallthrough */ }
+    }
+    if (trainerRef.current) trainerRef.current.dispose();
+    const trainer = new Trainer(undefined, net);
+    if (currentLevelModel) {
+      trainer.stats.episode = currentLevelModel.episodes;
+      trainer.stats.blueWins = currentLevelModel.blue_wins;
+      trainer.stats.redWins = currentLevelModel.red_wins;
+      trainer.stats.draws = currentLevelModel.draws;
+    }
+    trainerRef.current = trainer;
+    networkRef.current = trainer.getNetwork();
+    trainer.speed = trainingSpeed;
+    trainer.rinks = trainingRinks;
+    trainer.onStatsUpdate = (s) => setTrainingStats({ ...s });
+    trainer.start();
+    setTrainingRunning(true);
+  }, [levelModels, trainingSpeed, trainingRinks]);
+
+  const selectPlayLevel = useCallback(async (level: number) => {
+    const model = levelModels[level];
+    if (!model) return;
+    setLoadingModel(true);
+    setPlayLevel(level);
+    try {
+      const fullModel = await getModel(model.id);
+      const net = PolicyNetwork.deserialize(fullModel.weights!);
+      networkRef.current = net;
+      aiAgentRef.current = new AIAgent(net);
+      stateRef.current = createInitialState(0);
+      setScore([0, 0]);
+      setPaused(false);
+      setMode('play-ai');
+    } catch {
+      setStatusMsg('Failed to load model');
+    }
+    setLoadingModel(false);
+  }, [levelModels]);
+
   // Mode switching
   const switchMode = useCallback((newMode: GameMode) => {
     if (trainerRef.current) trainerRef.current.stop();
     cancelAnimationFrame(rafRef.current);
     lastTimeRef.current = 0;
     accumulatorRef.current = 0;
-    if (newMode === 'practice' || newMode === 'play-ai') {
+    if (newMode === 'practice') {
       stateRef.current = createInitialState(0);
       setScore([0, 0]);
       setPaused(false);
-      if (newMode === 'play-ai') {
-        const net = networkRef.current || new PolicyNetwork(NETWORK_SIZES);
-        networkRef.current = net;
-        aiAgentRef.current = new AIAgent(net);
-      }
+    }
+    if (newMode === 'play-ai') {
+      setPlayLevel(null);
+      fetchModels();
     }
     if (newMode === 'training') {
       if (!trainerRef.current) {
@@ -242,6 +346,22 @@ function App() {
     setTrainingRunning(false);
     setStatusMsg('');
   }, [fetchModels]);
+
+  // Auto-save when training reaches level target
+  useEffect(() => {
+    if (!trainingLevel || !trainingStats || autoSavedRef.current) return;
+    const lvl = AI_LEVELS.find(l => l.level === trainingLevel);
+    if (!lvl) return;
+    if (trainingStats.episode >= lvl.target) {
+      autoSavedRef.current = true;
+      if (trainerRef.current) trainerRef.current.stop();
+      setTrainingRunning(false);
+      autoSaveLevel(trainingLevel);
+    }
+  }, [trainingStats, trainingLevel, autoSaveLevel]);
+
+  // Fetch level models on mount
+  useEffect(() => { fetchModels(); }, [fetchModels]);
 
   // Game loop (practice + play-ai)
   useEffect(() => {
@@ -323,21 +443,6 @@ function App() {
   }, [mode]);
 
   // Training controls
-  const toggleTraining = useCallback(() => {
-    const trainer = trainerRef.current;
-    if (!trainer) return;
-    if (trainer.running) {
-      trainer.stop();
-      setTrainingRunning(false);
-    } else {
-      trainer.speed = trainingSpeed;
-      trainer.rinks = trainingRinks;
-      trainer.onStatsUpdate = (s) => setTrainingStats({ ...s });
-      trainer.start();
-      setTrainingRunning(true);
-    }
-  }, [trainingSpeed, trainingRinks]);
-
   const handleSpeedChange = useCallback((val: number) => {
     setTrainingSpeed(val);
     if (trainerRef.current) trainerRef.current.speed = val;
@@ -371,8 +476,8 @@ function App() {
     if (touch) setBlueDestination(touch.clientX, touch.clientY);
   };
 
-  const isPlayMode = mode === 'practice' || mode === 'play-ai';
-  const isGameMode = mode === 'practice' || mode === 'play-ai' || mode === 'training';
+  const isPlayMode = mode === 'practice' || (mode === 'play-ai' && !!playLevel);
+  const isGameMode = mode === 'practice' || (mode === 'play-ai' && !!playLevel) || mode === 'training';
   const stats = trainingStats;
 
   return (
@@ -487,35 +592,58 @@ function App() {
       )}
 
       {mode === 'training' && (
-        <div className="training-controls">
-          <button className={'ctrl-btn ' + (trainingRunning ? 'stop-btn' : 'start-btn')} onClick={toggleTraining}>
-            {trainingRunning ? '\u23F9 STOP' : '\u25B6 TRAIN'}
-          </button>
-          <div className="speed-control">
-            <label>Rinks: {trainingRinks}</label>
-            <input type="range" min={1} max={50} value={trainingRinks} onChange={(e) => handleRinksChange(Number(e.target.value))} />
+        <div className="training-levels">
+          <h3>AI Training Levels</h3>
+          {statusMsg && <div className="status-msg">{statusMsg}</div>}
+          {AI_LEVELS.map(lvl => {
+            const model = levelModels[lvl.level];
+            const episodes = trainingLevel === lvl.level && trainingStats ? trainingStats.episode : (model?.episodes || 0);
+            const progress = Math.min(1, episodes / lvl.target);
+            const isComplete = episodes >= lvl.target;
+            const prevComplete = lvl.level === 1 || (levelModels[lvl.level - 1]?.episodes || 0) >= AI_LEVELS[lvl.level - 2]?.target;
+            const isActive = trainingLevel === lvl.level && trainingRunning;
+            return (
+              <div key={lvl.level} className={'level-card' + (isComplete ? ' complete' : '') + (isActive ? ' active' : '')}>
+                <div className="level-header">
+                  <span className="level-name">{lvl.name}</span>
+                  <span className="level-label">{lvl.label}</span>
+                </div>
+                <div className="level-progress-bar">
+                  <div className="level-progress-fill" style={{ width: `${progress * 100}%` }} />
+                </div>
+                <div className="level-info">
+                  <span>{(episodes / 1000).toFixed(0)}K / {(lvl.target / 1_000_000).toFixed(0)}M episodes</span>
+                  {isComplete && <span className="level-done">Done</span>}
+                </div>
+                {!isComplete && prevComplete && (
+                  isActive ? (
+                    <button className="ctrl-btn stop-btn" onClick={() => { trainerRef.current?.stop(); setTrainingRunning(false); }}>
+                      Stop Training
+                    </button>
+                  ) : (
+                    <button className="ctrl-btn start-btn" onClick={() => startLevelTraining(lvl.level)}>
+                      {model ? 'Resume Training' : 'Start Training'}
+                    </button>
+                  )
+                )}
+                {!isComplete && !prevComplete && <span className="level-locked">Complete Level {lvl.level - 1} first</span>}
+              </div>
+            );
+          })}
+          <div className="training-controls">
+            <div className="speed-control">
+              <label>Rinks: {trainingRinks}</label>
+              <input type="range" min={1} max={50} value={trainingRinks} onChange={(e) => handleRinksChange(Number(e.target.value))} />
+            </div>
+            <div className="speed-control">
+              <label>Speed: {trainingSpeed}x</label>
+              <input type="range" min={1} max={50} value={trainingSpeed} onChange={(e) => handleSpeedChange(Number(e.target.value))} />
+            </div>
           </div>
-          <div className="speed-control">
-            <label>Speed: {trainingSpeed}x</label>
-            <input type="range" min={1} max={50} value={trainingSpeed} onChange={(e) => handleSpeedChange(Number(e.target.value))} />
+          <div className="save-bar">
+            <input type="text" className="save-input" placeholder="Custom save name..." value={saveName} onChange={(e) => setSaveName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }} />
+            <button className="ctrl-btn save-btn" onClick={handleSave} disabled={saving || !saveName.trim() || !networkRef.current}>{saving ? 'Saving...' : 'Save'}</button>
           </div>
-        </div>
-      )}
-
-      {mode === 'training' && (
-        <div className="save-bar">
-          <input
-            type="text"
-            className="save-input"
-            placeholder="Model name..."
-            value={saveName}
-            onChange={(e) => setSaveName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }}
-          />
-          <button className="ctrl-btn save-btn" onClick={handleSave} disabled={saving || !saveName.trim() || !networkRef.current}>
-            {saving ? 'Saving...' : '💾 Save'}
-          </button>
-          {statusMsg && <span className="status-msg">{statusMsg}</span>}
         </div>
       )}
 
@@ -547,6 +675,35 @@ function App() {
             </div>
           )}
           <button className="ctrl-btn refresh-btn" onClick={fetchModels}>↻ Refresh</button>
+        </div>
+      )}
+
+      {mode === 'play-ai' && !playLevel && (
+        <div className="level-select">
+          <h3>Select Difficulty</h3>
+          {statusMsg && <div className="status-msg">{statusMsg}</div>}
+          {AI_LEVELS.map(lvl => {
+            const model = levelModels[lvl.level];
+            const available = !!model && model.episodes > 0;
+            return (
+              <div key={lvl.level} className={'level-pick-card' + (available ? '' : ' locked')}>
+                <div className="level-pick-header">
+                  <span className="level-name">{lvl.name}</span>
+                  <span className="level-label">{lvl.label}</span>
+                </div>
+                <div className="level-pick-meta">
+                  {available ? `${(model!.episodes / 1000).toFixed(0)}K episodes trained` : 'Not trained yet'}
+                </div>
+                {available ? (
+                  <button className="ctrl-btn start-btn" onClick={() => selectPlayLevel(lvl.level)} disabled={loadingModel}>
+                    {loadingModel ? 'Loading...' : 'Play'}
+                  </button>
+                ) : (
+                  <span className="level-locked">Train this level first</span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
