@@ -521,59 +521,76 @@ kbd {
 
 /* ── Portrait mobile layout ── */
 .portrait {
-  padding: 2px;
-  gap: 2px;
-}
-
-.portrait-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-  width: 100%;
-  justify-content: center;
-}
-
-.portrait-header .mode-bar {
-  padding: 1px;
-}
-
-.portrait-header .mode-btn {
-  padding: 3px 8px;
-  font-size: 10px;
-}
-
-.portrait-score {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 15px;
-  font-weight: 700;
-  padding: 2px 10px;
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 8px;
-  flex-shrink: 0;
+  padding: 0;
+  gap: 0;
 }
 
 .portrait .game-area {
+  flex-direction: row;
+  gap: 0;
+  padding: 0;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
+}
+
+.portrait-sidebar {
+  width: 55px;
+  min-width: 55px;
+  display: flex;
   flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 2px;
+  flex-shrink: 0;
+}
+
+.sidebar-btn {
+  width: 100%;
+  padding: 6px 2px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #aaa;
+  font-size: 9px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sidebar-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #38bdf8;
+}
+
+.sidebar-score {
+  display: flex;
+  align-items: center;
   gap: 4px;
-  padding: 0 2px;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  margin-top: auto;
 }
 
 .portrait-controls {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   width: 100%;
   flex-shrink: 0;
-  padding: 0 4px;
+  padding: 2px 4px;
 }
 
 .bottom-btn {
   flex: 1;
-  height: 52px;
+  height: 48px;
   border: none;
-  border-radius: 12px;
+  border-radius: 10px;
   font-weight: 700;
   cursor: pointer;
   user-select: none;
@@ -590,11 +607,11 @@ kbd {
 }
 
 .bottom-btn-icon {
-  font-size: 22px;
+  font-size: 20px;
 }
 
 .bottom-btn-label {
-  font-size: 13px;
+  font-size: 12px;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }

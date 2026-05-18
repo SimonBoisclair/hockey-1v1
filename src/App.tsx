@@ -56,11 +56,11 @@ function App() {
     setIsPortrait(portraitMobile);
 
     if (portraitMobile) {
-      const topBarH = 36;
-      const bottomBtnH = 56;
-      const gapSpace = 8;
-      const displayW = vw - 4;
-      const displayH = vh - topBarH - bottomBtnH - gapSpace;
+      const sidebarW = 55;
+      const bottomBtnH = 52;
+      const gapSpace = 6;
+      const displayW = vw - sidebarW - gapSpace;
+      const displayH = vh - bottomBtnH - gapSpace;
       const scaleByWidth = (displayW - PADDING * 2) / RINK_HEIGHT;
       const scaleByHeight = (displayH - PADDING * 2) / RINK_WIDTH;
       const s = Math.min(scaleByWidth, scaleByHeight);
@@ -386,23 +386,7 @@ function App() {
         </div>
       )}
 
-      {isPortrait ? (
-        <div className="portrait-header">
-          <div className="mode-bar">
-            <button className={'mode-btn' + (mode === 'practice' ? ' active' : '')} onClick={() => switchMode('practice')}>Practice</button>
-            <button className={'mode-btn' + (mode === 'training' ? ' active' : '')} onClick={() => switchMode('training')}>Train AI</button>
-            <button className={'mode-btn' + (mode === 'play-ai' ? ' active' : '')} onClick={() => switchMode('play-ai')}>Play vs AI</button>
-            <button className={'mode-btn' + (mode === 'admin' ? ' active' : '')} onClick={() => switchMode('admin')}>Models</button>
-          </div>
-          {isPlayMode && (
-            <div className="portrait-score">
-              <span className="team-blue">{score[0]}</span>
-              <span className="score-dash">&ndash;</span>
-              <span className="team-red">{score[1]}</span>
-            </div>
-          )}
-        </div>
-      ) : (
+      {!isPortrait && (
         <>
           <div className="mode-bar">
             <button className={'mode-btn' + (mode === 'practice' ? ' active' : '')} onClick={() => switchMode('practice')}>Practice</button>
@@ -433,38 +417,61 @@ function App() {
         </>
       )}
 
-      {isGameMode && (
+      {isPortrait ? (
         <div className="game-area">
-          <div className="canvas-container" ref={containerRef}>
-            <canvas ref={canvasRef} onClick={handleCanvasClick} onTouchStart={handleCanvasTouch} />
-          </div>
-          {isPortrait && isPlayMode && (
-            <div className="portrait-controls">
-              <button
-                className={'bottom-btn pause-bottom' + (paused ? ' active' : '')}
-                onPointerDown={(e) => {
-                  e.preventDefault();
-                  (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                  stateRef.current.paused = true;
-                  setPaused(true);
-                }}
-                onPointerUp={(e) => { e.preventDefault(); releasePause(); }}
-                onPointerCancel={(e) => { e.preventDefault(); releasePause(); }}
-                style={{ touchAction: 'none' }}
-              >
-                <span className="bottom-btn-icon">{paused ? '\u25B6' : '\u23F8'}</span>
-                <span className="bottom-btn-label">PAUSE</span>
-              </button>
-              <button
-                className="bottom-btn steal-bottom"
-                onTouchStart={(e) => { e.preventDefault(); doSteal(); }}
-                onMouseDown={(e) => { e.preventDefault(); doSteal(); }}
-              >
-                <span className="bottom-btn-icon">{'\u26A1'}</span>
-                <span className="bottom-btn-label">STEAL</span>
-              </button>
+          {isGameMode && (
+            <div className="canvas-container" ref={containerRef}>
+              <canvas ref={canvasRef} onClick={handleCanvasClick} onTouchStart={handleCanvasTouch} />
             </div>
           )}
+          <div className="portrait-sidebar">
+            <button className={'sidebar-btn' + (mode === 'practice' ? ' active' : '')} onClick={() => switchMode('practice')}>Practice</button>
+            <button className={'sidebar-btn' + (mode === 'training' ? ' active' : '')} onClick={() => switchMode('training')}>Train</button>
+            <button className={'sidebar-btn' + (mode === 'play-ai' ? ' active' : '')} onClick={() => switchMode('play-ai')}>Play AI</button>
+            <button className={'sidebar-btn' + (mode === 'admin' ? ' active' : '')} onClick={() => switchMode('admin')}>Models</button>
+            {isPlayMode && (
+              <div className="sidebar-score">
+                <span className="team-blue">{score[0]}</span>
+                <span className="score-dash">&ndash;</span>
+                <span className="team-red">{score[1]}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        isGameMode && (
+          <div className="game-area">
+            <div className="canvas-container" ref={containerRef}>
+              <canvas ref={canvasRef} onClick={handleCanvasClick} onTouchStart={handleCanvasTouch} />
+            </div>
+          </div>
+        )
+      )}
+      {isPortrait && isPlayMode && (
+        <div className="portrait-controls">
+          <button
+            className={'bottom-btn pause-bottom' + (paused ? ' active' : '')}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              (e.target as HTMLElement).setPointerCapture(e.pointerId);
+              stateRef.current.paused = true;
+              setPaused(true);
+            }}
+            onPointerUp={(e) => { e.preventDefault(); releasePause(); }}
+            onPointerCancel={(e) => { e.preventDefault(); releasePause(); }}
+            style={{ touchAction: 'none' }}
+          >
+            <span className="bottom-btn-icon">{paused ? '\u25B6' : '\u23F8'}</span>
+            <span className="bottom-btn-label">PAUSE</span>
+          </button>
+          <button
+            className="bottom-btn steal-bottom"
+            onTouchStart={(e) => { e.preventDefault(); doSteal(); }}
+            onMouseDown={(e) => { e.preventDefault(); doSteal(); }}
+          >
+            <span className="bottom-btn-icon">{'\u26A1'}</span>
+            <span className="bottom-btn-label">STEAL</span>
+          </button>
         </div>
       )}
 
