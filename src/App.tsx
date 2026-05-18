@@ -356,7 +356,7 @@ function App() {
   const handleCanvasTouch = (e: React.TouchEvent<HTMLCanvasElement>) => {
     if (mode === 'training' || mode === 'admin') return;
     e.preventDefault();
-    const touch = e.touches[0];
+    const touch = e.changedTouches[0];
     if (touch) setBlueDestination(touch.clientX, touch.clientY);
   };
 
