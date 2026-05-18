@@ -55,33 +55,37 @@ function App() {
     isPortraitRef.current = portraitMobile;
     setIsPortrait(portraitMobile);
 
-    let s: number;
-    let cw: number;
-    let ch: number;
-
     if (portraitMobile) {
       const topBarH = 36;
       const bottomBtnH = 56;
       const gapSpace = 8;
-      const availW = vw - gapSpace;
-      const availH = vh - topBarH - bottomBtnH - gapSpace;
-      const scaleByWidth = (availW - PADDING * 2) / RINK_HEIGHT;
-      const scaleByHeight = (availH - PADDING * 2) / RINK_WIDTH;
-      s = Math.min(scaleByWidth, scaleByHeight);
-      cw = RINK_HEIGHT * s + PADDING * 2;
-      ch = RINK_WIDTH * s + PADDING * 2;
-    } else {
-      const isMobile = vw <= 900;
-      const reservedHeight = isMobile ? 80 : 160;
-      const availableHeight = vh - reservedHeight;
-      const availableWidth = Math.min(container.clientWidth, 1100) - PADDING * 2;
-      const scaleByWidth = availableWidth / RINK_WIDTH;
-      const scaleByHeight = (availableHeight - PADDING * 2) / RINK_HEIGHT;
-      s = Math.min(scaleByWidth, scaleByHeight);
-      cw = RINK_WIDTH * s + PADDING * 2;
-      ch = RINK_HEIGHT * s + PADDING * 2;
+      const displayW = vw - 4;
+      const displayH = vh - topBarH - bottomBtnH - gapSpace;
+      const scaleByWidth = (displayW - PADDING * 2) / RINK_HEIGHT;
+      const scaleByHeight = (displayH - PADDING * 2) / RINK_WIDTH;
+      const s = Math.min(scaleByWidth, scaleByHeight);
+      const internalW = RINK_HEIGHT * s + PADDING * 2;
+      const internalH = RINK_WIDTH * s + PADDING * 2;
+      canvas.width = internalW * dpr;
+      canvas.height = internalH * dpr;
+      canvas.style.width = displayW + 'px';
+      canvas.style.height = displayH + 'px';
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.scale(dpr, dpr);
+      scaleRef.current = s;
+      offsetRef.current = { x: PADDING, y: PADDING };
+      return;
     }
 
+    const isMobile = vw <= 900;
+    const reservedHeight = isMobile ? 80 : 160;
+    const availableHeight = vh - reservedHeight;
+    const availableWidth = Math.min(container.clientWidth, 1100) - PADDING * 2;
+    const scaleByWidth = availableWidth / RINK_WIDTH;
+    const scaleByHeight = (availableHeight - PADDING * 2) / RINK_HEIGHT;
+    const s = Math.min(scaleByWidth, scaleByHeight);
+    const cw = RINK_WIDTH * s + PADDING * 2;
+    const ch = RINK_HEIGHT * s + PADDING * 2;
     canvas.width = cw * dpr;
     canvas.height = ch * dpr;
     canvas.style.width = cw + 'px';
@@ -101,11 +105,13 @@ function App() {
     const oy = offsetRef.current.y;
 
     if (isPortraitRef.current) {
-      const cx = clientX - rect.left;
-      const cy = clientY - rect.top;
-      const canvasCssH = parseFloat(canvas.style.height);
-      const gameX = (canvasCssH - cy - ox) / s;
-      const gameY = (cx - oy) / s;
+      const dpr = window.devicePixelRatio || 1;
+      const internalW = canvas.width / dpr;
+      const internalH = canvas.height / dpr;
+      const ix = (clientX - rect.left) * (internalW / rect.width);
+      const iy = (clientY - rect.top) * (internalH / rect.height);
+      const gameX = (internalH - iy - ox) / s;
+      const gameY = (ix - oy) / s;
       return {
         x: Math.max(PLAYER_RADIUS, Math.min(RINK_WIDTH - PLAYER_RADIUS, gameX)),
         y: Math.max(PLAYER_RADIUS, Math.min(RINK_HEIGHT - PLAYER_RADIUS, gameY)),
