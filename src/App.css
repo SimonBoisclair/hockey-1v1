@@ -61,11 +61,20 @@ html, body {
 
 .score-dash { color: #666; }
 
-.canvas-container {
-  width: 100%;
-  max-width: 1100px;
+.game-area {
+  display: flex;
   flex: 1;
   min-height: 0;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: 1100px;
+}
+
+.canvas-container {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -510,7 +519,101 @@ kbd {
   font-size: 13px;
 }
 
-/* Show landscape prompt only on small screens in portrait */
+/* ── Portrait mobile layout ── */
+.portrait {
+  padding: 2px;
+  gap: 2px;
+}
+
+.portrait-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  width: 100%;
+  justify-content: center;
+}
+
+.portrait-header .mode-bar {
+  padding: 1px;
+}
+
+.portrait-header .mode-btn {
+  padding: 3px 8px;
+  font-size: 10px;
+}
+
+.portrait-score {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 2px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.portrait .game-area {
+  gap: 4px;
+  padding: 0 2px;
+  align-items: stretch;
+}
+
+.side-btn {
+  width: 48px;
+  min-width: 48px;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  touch-action: manipulation;
+  flex-shrink: 0;
+}
+
+.side-btn:active {
+  transform: scale(0.95);
+}
+
+.side-btn-icon {
+  font-size: 22px;
+}
+
+.side-btn-label {
+  font-size: 8px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.pause-side {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e0e0e0;
+}
+
+.pause-side.active {
+  background: rgba(76, 175, 80, 0.3);
+  color: #81c784;
+}
+
+.steal-side {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ffb74d;
+}
+
+.steal-side:active {
+  background: rgba(255, 152, 0, 0.4);
+}
+
+/* Show landscape prompt only on small screens in portrait — disabled in portrait mode */
 @media (max-width: 900px) and (orientation: portrait) {
   .landscape-prompt {
     display: flex;

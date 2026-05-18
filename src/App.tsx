@@ -21,6 +21,9 @@ function App() {
   const accumulatorRef = useRef<number>(0);
   const scaleRef = useRef<number>(1);
   const offsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const isPortraitRef = useRef(false);
+
+  const [isPortrait, setIsPortrait] = useState(false);
 
   const trainerRef = useRef<Trainer | null>(null);
   const aiAgentRef = useRef<AIAgent | null>(null);
@@ -47,16 +50,38 @@ function App() {
     if (!canvas || !container) return;
     const vh = window.innerHeight;
     const vw = window.innerWidth;
-    const isMobile = vw <= 900;
-    const reservedHeight = isMobile ? 80 : 160;
-    const availableHeight = vh - reservedHeight;
-    const availableWidth = Math.min(container.clientWidth, 1100) - PADDING * 2;
-    const scaleByWidth = availableWidth / RINK_WIDTH;
-    const scaleByHeight = (availableHeight - PADDING * 2) / RINK_HEIGHT;
-    const s = Math.min(scaleByWidth, scaleByHeight);
-    const cw = RINK_WIDTH * s + PADDING * 2;
-    const ch = RINK_HEIGHT * s + PADDING * 2;
     const dpr = window.devicePixelRatio || 1;
+    const portraitMobile = vw <= 900 && vw < vh;
+    isPortraitRef.current = portraitMobile;
+    setIsPortrait(portraitMobile);
+
+    let s: number;
+    let cw: number;
+    let ch: number;
+
+    if (portraitMobile) {
+      const sideButtonW = 48;
+      const topBarH = 36;
+      const gapSpace = 8;
+      const availW = vw - 2 * sideButtonW - gapSpace;
+      const availH = vh - topBarH - 4;
+      const scaleByWidth = (availW - PADDING * 2) / RINK_HEIGHT;
+      const scaleByHeight = (availH - PADDING * 2) / RINK_WIDTH;
+      s = Math.min(scaleByWidth, scaleByHeight);
+      cw = RINK_HEIGHT * s + PADDING * 2;
+      ch = RINK_WIDTH * s + PADDING * 2;
+    } else {
+      const isMobile = vw <= 900;
+      const reservedHeight = isMobile ? 80 : 160;
+      const availableHeight = vh - reservedHeight;
+      const availableWidth = Math.min(container.clientWidth, 1100) - PADDING * 2;
+      const scaleByWidth = availableWidth / RINK_WIDTH;
+      const scaleByHeight = (availableHeight - PADDING * 2) / RINK_HEIGHT;
+      s = Math.min(scaleByWidth, scaleByHeight);
+      cw = RINK_WIDTH * s + PADDING * 2;
+      ch = RINK_HEIGHT * s + PADDING * 2;
+    }
+
     canvas.width = cw * dpr;
     canvas.height = ch * dpr;
     canvas.style.width = cw + 'px';
@@ -71,8 +96,24 @@ function App() {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
-    const x = (clientX - rect.left - offsetRef.current.x) / scaleRef.current;
-    const y = (clientY - rect.top - offsetRef.current.y) / scaleRef.current;
+    const s = scaleRef.current;
+    const ox = offsetRef.current.x;
+    const oy = offsetRef.current.y;
+
+    if (isPortraitRef.current) {
+      const cx = clientX - rect.left;
+      const cy = clientY - rect.top;
+      const canvasCssH = parseFloat(canvas.style.height);
+      const gameX = (canvasCssH - cy - ox) / s;
+      const gameY = (cx - oy) / s;
+      return {
+        x: Math.max(PLAYER_RADIUS, Math.min(RINK_WIDTH - PLAYER_RADIUS, gameX)),
+        y: Math.max(PLAYER_RADIUS, Math.min(RINK_HEIGHT - PLAYER_RADIUS, gameY)),
+      };
+    }
+
+    const x = (clientX - rect.left - ox) / s;
+    const y = (clientY - rect.top - oy) / s;
     return {
       x: Math.max(PLAYER_RADIUS, Math.min(RINK_WIDTH - PLAYER_RADIUS, x)),
       y: Math.max(PLAYER_RADIUS, Math.min(RINK_HEIGHT - PLAYER_RADIUS, y)),
@@ -232,7 +273,7 @@ function App() {
           ctx.save();
           const dpr = window.devicePixelRatio || 1;
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-          render(ctx, state, canvas.width / dpr, canvas.height / dpr, scaleRef.current, offsetRef.current.x, offsetRef.current.y);
+          render(ctx, state, canvas.width / dpr, canvas.height / dpr, scaleRef.current, offsetRef.current.x, offsetRef.current.y, isPortraitRef.current);
           ctx.restore();
         }
       }
@@ -258,7 +299,7 @@ function App() {
             ctx.save();
             const dpr = window.devicePixelRatio || 1;
             ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-            render(ctx, trainer.currentState, canvas.width / dpr, canvas.height / dpr, scaleRef.current, offsetRef.current.x, offsetRef.current.y);
+            render(ctx, trainer.currentState, canvas.width / dpr, canvas.height / dpr, scaleRef.current, offsetRef.current.x, offsetRef.current.y, isPortraitRef.current);
             ctx.restore();
           }
         }
@@ -324,48 +365,92 @@ function App() {
   const stats = trainingStats;
 
   return (
-    <div className="app">
-      <div className="landscape-prompt">
-        <div className="landscape-prompt-content">
-          <span className="rotate-icon">&#x1F504;</span>
-          <p>Rotate your phone to landscape</p>
-        </div>
-      </div>
-
-      <div className="mode-bar">
-        <button className={'mode-btn' + (mode === 'practice' ? ' active' : '')} onClick={() => switchMode('practice')}>Practice</button>
-        <button className={'mode-btn' + (mode === 'training' ? ' active' : '')} onClick={() => switchMode('training')}>Train AI</button>
-        <button className={'mode-btn' + (mode === 'play-ai' ? ' active' : '')} onClick={() => switchMode('play-ai')}>Play vs AI</button>
-        <button className={'mode-btn' + (mode === 'admin' ? ' active' : '')} onClick={() => switchMode('admin')}>Models</button>
-      </div>
-
-      {isPlayMode && (
-        <div className="scoreboard">
-          <span className="team-blue">BLUE</span>
-          <span className="score-value">{score[0]}</span>
-          <span className="score-dash">&mdash;</span>
-          <span className="score-value">{score[1]}</span>
-          <span className="team-red">RED</span>
+    <div className={'app' + (isPortrait ? ' portrait' : '')}>
+      {!isPortrait && (
+        <div className="landscape-prompt">
+          <div className="landscape-prompt-content">
+            <span className="rotate-icon">&#x1F504;</span>
+            <p>Rotate your phone to landscape</p>
+          </div>
         </div>
       )}
 
-      {mode === 'training' && stats && (
-        <div className="training-stats">
-          <div className="stat"><span className="stat-label">Episodes</span><span className="stat-value">{stats.episode}</span></div>
-          <div className="stat"><span className="stat-label">Blue W</span><span className="stat-value blue">{stats.blueWins}</span></div>
-          <div className="stat"><span className="stat-label">Red W</span><span className="stat-value red">{stats.redWins}</span></div>
-          <div className="stat"><span className="stat-label">Draws</span><span className="stat-value">{stats.draws}</span></div>
-          <div className="stat"><span className="stat-label">Goals/ep</span><span className="stat-value">{stats.avgGoalsPerEp.toFixed(1)}</span></div>
+      {isPortrait ? (
+        <div className="portrait-header">
+          <div className="mode-bar">
+            <button className={'mode-btn' + (mode === 'practice' ? ' active' : '')} onClick={() => switchMode('practice')}>Practice</button>
+            <button className={'mode-btn' + (mode === 'training' ? ' active' : '')} onClick={() => switchMode('training')}>Train AI</button>
+            <button className={'mode-btn' + (mode === 'play-ai' ? ' active' : '')} onClick={() => switchMode('play-ai')}>Play vs AI</button>
+            <button className={'mode-btn' + (mode === 'admin' ? ' active' : '')} onClick={() => switchMode('admin')}>Models</button>
+          </div>
+          {isPlayMode && (
+            <div className="portrait-score">
+              <span className="team-blue">{score[0]}</span>
+              <span className="score-dash">&ndash;</span>
+              <span className="team-red">{score[1]}</span>
+            </div>
+          )}
         </div>
+      ) : (
+        <>
+          <div className="mode-bar">
+            <button className={'mode-btn' + (mode === 'practice' ? ' active' : '')} onClick={() => switchMode('practice')}>Practice</button>
+            <button className={'mode-btn' + (mode === 'training' ? ' active' : '')} onClick={() => switchMode('training')}>Train AI</button>
+            <button className={'mode-btn' + (mode === 'play-ai' ? ' active' : '')} onClick={() => switchMode('play-ai')}>Play vs AI</button>
+            <button className={'mode-btn' + (mode === 'admin' ? ' active' : '')} onClick={() => switchMode('admin')}>Models</button>
+          </div>
+
+          {isPlayMode && (
+            <div className="scoreboard">
+              <span className="team-blue">BLUE</span>
+              <span className="score-value">{score[0]}</span>
+              <span className="score-dash">&mdash;</span>
+              <span className="score-value">{score[1]}</span>
+              <span className="team-red">RED</span>
+            </div>
+          )}
+
+          {mode === 'training' && stats && (
+            <div className="training-stats">
+              <div className="stat"><span className="stat-label">Episodes</span><span className="stat-value">{stats.episode}</span></div>
+              <div className="stat"><span className="stat-label">Blue W</span><span className="stat-value blue">{stats.blueWins}</span></div>
+              <div className="stat"><span className="stat-label">Red W</span><span className="stat-value red">{stats.redWins}</span></div>
+              <div className="stat"><span className="stat-label">Draws</span><span className="stat-value">{stats.draws}</span></div>
+              <div className="stat"><span className="stat-label">Goals/ep</span><span className="stat-value">{stats.avgGoalsPerEp.toFixed(1)}</span></div>
+            </div>
+          )}
+        </>
       )}
 
       {isGameMode && (
-        <div className="canvas-container" ref={containerRef}>
-          <canvas ref={canvasRef} onClick={handleCanvasClick} onTouchStart={handleCanvasTouch} />
+        <div className="game-area">
+          {isPortrait && isPlayMode && (
+            <button
+              className={'side-btn pause-side' + (paused ? ' active' : '')}
+              onTouchStart={(e) => { e.preventDefault(); togglePause(); }}
+              onMouseDown={(e) => { e.preventDefault(); togglePause(); }}
+            >
+              <span className="side-btn-icon">{paused ? '\u25B6' : '\u23F8'}</span>
+              <span className="side-btn-label">{paused ? 'PLAY' : 'PAUSE'}</span>
+            </button>
+          )}
+          <div className="canvas-container" ref={containerRef}>
+            <canvas ref={canvasRef} onClick={handleCanvasClick} onTouchStart={handleCanvasTouch} />
+          </div>
+          {isPortrait && isPlayMode && (
+            <button
+              className="side-btn steal-side"
+              onTouchStart={(e) => { e.preventDefault(); doSteal(); }}
+              onMouseDown={(e) => { e.preventDefault(); doSteal(); }}
+            >
+              <span className="side-btn-icon">{'\u26A1'}</span>
+              <span className="side-btn-label">STEAL</span>
+            </button>
+          )}
         </div>
       )}
 
-      {isPlayMode && (
+      {isPlayMode && !isPortrait && (
         <div className="mobile-controls">
           <button className={'ctrl-btn pause-btn' + (paused ? ' active' : '')} onMouseDown={(e) => { e.preventDefault(); togglePause(); }} onTouchStart={(e) => { e.preventDefault(); togglePause(); }}>
             {paused ? '\u25B6 RESUME' : '\u23F8 PAUSE'}
@@ -440,7 +525,7 @@ function App() {
         </div>
       )}
 
-      {isPlayMode && (
+      {isPlayMode && !isPortrait && (
         <div className="instructions">
           <h3>Controls</h3>
           <div className="instruction-grid">
