@@ -22,6 +22,7 @@ function App() {
   const scaleRef = useRef<number>(1);
   const offsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const isPortraitRef = useRef(false);
+  const pauseTouchIdRef = useRef<number | null>(null);
 
   const [isPortrait, setIsPortrait] = useState(false);
 
@@ -130,6 +131,32 @@ function App() {
     const state = stateRef.current;
     state.paused = !state.paused;
     setPaused(state.paused);
+  }, []);
+
+  const holdPause = useCallback((touchId: number) => {
+    pauseTouchIdRef.current = touchId;
+    stateRef.current.paused = true;
+    setPaused(true);
+  }, []);
+
+  useEffect(() => {
+    const handlePauseTouchEnd = (e: TouchEvent) => {
+      if (pauseTouchIdRef.current === null) return;
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === pauseTouchIdRef.current) {
+          pauseTouchIdRef.current = null;
+          stateRef.current.paused = false;
+          setPaused(false);
+          break;
+        }
+      }
+    };
+    window.addEventListener('touchend', handlePauseTouchEnd);
+    window.addEventListener('touchcancel', handlePauseTouchEnd);
+    return () => {
+      window.removeEventListener('touchend', handlePauseTouchEnd);
+      window.removeEventListener('touchcancel', handlePauseTouchEnd);
+    };
   }, []);
 
   const doSteal = useCallback(() => {
@@ -427,11 +454,11 @@ function App() {
           {isPortrait && isPlayMode && (
             <button
               className={'side-btn pause-side' + (paused ? ' active' : '')}
-              onTouchStart={(e) => { e.preventDefault(); togglePause(); }}
+              onTouchStart={(e) => { e.preventDefault(); holdPause(e.changedTouches[0].identifier); }}
               onMouseDown={(e) => { e.preventDefault(); togglePause(); }}
             >
               <span className="side-btn-icon">{paused ? '\u25B6' : '\u23F8'}</span>
-              <span className="side-btn-label">{paused ? 'PLAY' : 'PAUSE'}</span>
+              <span className="side-btn-label">PAUSE</span>
             </button>
           )}
           <div className="canvas-container" ref={containerRef}>
