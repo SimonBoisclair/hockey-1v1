@@ -60,11 +60,11 @@ function App() {
     let ch: number;
 
     if (portraitMobile) {
-      const sideButtonW = 48;
       const topBarH = 36;
+      const bottomBtnH = 56;
       const gapSpace = 8;
-      const availW = vw - 2 * sideButtonW - gapSpace;
-      const availH = vh - topBarH - 4;
+      const availW = vw - gapSpace;
+      const availH = vh - topBarH - bottomBtnH - gapSpace;
       const scaleByWidth = (availW - PADDING * 2) / RINK_HEIGHT;
       const scaleByHeight = (availH - PADDING * 2) / RINK_WIDTH;
       s = Math.min(scaleByWidth, scaleByHeight);
@@ -429,35 +429,35 @@ function App() {
 
       {isGameMode && (
         <div className="game-area">
-          {isPortrait && isPlayMode && (
-            <button
-              className={'side-btn pause-side' + (paused ? ' active' : '')}
-              onPointerDown={(e) => {
-                e.preventDefault();
-                (e.target as HTMLElement).setPointerCapture(e.pointerId);
-                stateRef.current.paused = true;
-                setPaused(true);
-              }}
-              onPointerUp={(e) => { e.preventDefault(); releasePause(); }}
-              onPointerCancel={(e) => { e.preventDefault(); releasePause(); }}
-              style={{ touchAction: 'none' }}
-            >
-              <span className="side-btn-icon">{paused ? '\u25B6' : '\u23F8'}</span>
-              <span className="side-btn-label">PAUSE</span>
-            </button>
-          )}
           <div className="canvas-container" ref={containerRef}>
             <canvas ref={canvasRef} onClick={handleCanvasClick} onTouchStart={handleCanvasTouch} />
           </div>
           {isPortrait && isPlayMode && (
-            <button
-              className="side-btn steal-side"
-              onTouchStart={(e) => { e.preventDefault(); doSteal(); }}
-              onMouseDown={(e) => { e.preventDefault(); doSteal(); }}
-            >
-              <span className="side-btn-icon">{'\u26A1'}</span>
-              <span className="side-btn-label">STEAL</span>
-            </button>
+            <div className="portrait-controls">
+              <button
+                className={'bottom-btn pause-bottom' + (paused ? ' active' : '')}
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  (e.target as HTMLElement).setPointerCapture(e.pointerId);
+                  stateRef.current.paused = true;
+                  setPaused(true);
+                }}
+                onPointerUp={(e) => { e.preventDefault(); releasePause(); }}
+                onPointerCancel={(e) => { e.preventDefault(); releasePause(); }}
+                style={{ touchAction: 'none' }}
+              >
+                <span className="bottom-btn-icon">{paused ? '\u25B6' : '\u23F8'}</span>
+                <span className="bottom-btn-label">PAUSE</span>
+              </button>
+              <button
+                className="bottom-btn steal-bottom"
+                onTouchStart={(e) => { e.preventDefault(); doSteal(); }}
+                onMouseDown={(e) => { e.preventDefault(); doSteal(); }}
+              >
+                <span className="bottom-btn-icon">{'\u26A1'}</span>
+                <span className="bottom-btn-label">STEAL</span>
+              </button>
+            </div>
           )}
         </div>
       )}
