@@ -684,6 +684,7 @@ kbd {
 .portrait {
   padding: 0;
   gap: 0;
+  overflow-y: auto;
 }
 
 .portrait .game-area {
@@ -693,6 +694,20 @@ kbd {
   align-items: stretch;
   flex: 1;
   min-height: 0;
+}
+
+.portrait .game-area.no-canvas {
+  flex: 0;
+  flex-direction: row;
+  align-items: flex-start;
+}
+
+.portrait .game-area.no-canvas .portrait-sidebar {
+  flex-direction: row;
+  width: auto;
+  min-width: 0;
+  gap: 4px;
+  padding: 6px;
 }
 
 .portrait-sidebar {

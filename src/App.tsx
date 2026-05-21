@@ -523,8 +523,8 @@ function App() {
       )}
 
       {isPortrait ? (
-        <div className="game-area">
-          {isGameMode && (
+        <div className={'game-area' + (mode === 'training' || mode === 'admin' || (mode === 'play-ai' && !playLevel) ? ' no-canvas' : '')}>
+          {isGameMode && mode !== 'training' && (
             <div className="canvas-container" ref={containerRef}>
               <canvas ref={canvasRef} onClick={handleCanvasClick} onTouchStart={handleCanvasTouch} />
             </div>
