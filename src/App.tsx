@@ -612,9 +612,18 @@ function App() {
                   <div className="level-progress-fill" style={{ width: `${progress * 100}%` }} />
                 </div>
                 <div className="level-info">
-                  <span>{(episodes / 1000).toFixed(0)}K / {(lvl.target / 1_000_000).toFixed(0)}M episodes</span>
+                  <span>{episodes >= 1000 ? `${(episodes / 1000).toFixed(0)}K` : episodes.toLocaleString()} / {(lvl.target / 1_000_000).toFixed(0)}M episodes</span>
                   {isComplete && <span className="level-done">Done</span>}
+                  {isActive && <span className="level-running">Training...</span>}
                 </div>
+                {isActive && trainingStats && (
+                  <div className="level-live-stats">
+                    <span>Blue W: {trainingStats.blueWins}</span>
+                    <span>Red W: {trainingStats.redWins}</span>
+                    <span>Draws: {trainingStats.draws}</span>
+                    <span>Goals/ep: {trainingStats.avgGoalsPerEp.toFixed(1)}</span>
+                  </div>
+                )}
                 {!isComplete && prevComplete && (
                   isActive ? (
                     <button className="ctrl-btn stop-btn" onClick={() => { trainerRef.current?.stop(); setTrainingRunning(false); }}>

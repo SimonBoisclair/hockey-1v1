@@ -612,6 +612,25 @@ kbd {
   padding: 4px 0;
 }
 
+.level-running {
+  color: #38bdf8;
+  font-weight: 600;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.level-live-stats {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: #aaa;
+  flex-wrap: wrap;
+}
+
 /* ── Level select for play ── */
 .level-select {
   display: flex;
