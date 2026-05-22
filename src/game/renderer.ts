@@ -308,11 +308,22 @@ export function render(
   scale: number,
   offsetX: number,
   offsetY: number,
+  rotated: boolean = false,
 ): void {
-  // Clear
+  // Clear in actual canvas space
   ctx.clearRect(0, 0, canvasWidth, canvasHeight);
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+  // Apply rotation for portrait mode (goal at top)
+  if (rotated) {
+    ctx.save();
+    const virtualW = RINK_WIDTH * scale + offsetX * 2;
+    const virtualH = RINK_HEIGHT * scale + offsetY * 2;
+    ctx.translate(canvasWidth / 2, canvasHeight / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.translate(-virtualW / 2, -virtualH / 2);
+  }
 
   // Clip to rink shape
   ctx.save();
@@ -331,7 +342,7 @@ export function render(
   drawPlayer(ctx, state, 0, scale, offsetX, offsetY);
   drawPlayer(ctx, state, 1, scale, offsetX, offsetY);
 
-  ctx.restore();
+  ctx.restore(); // undo clip
 
   // Rink border (outside clip)
   drawRoundedRinkPath(ctx, scale, offsetX, offsetY);
@@ -339,6 +350,10 @@ export function render(
   ctx.lineWidth = 3;
   ctx.stroke();
 
-  // HUD overlay
+  if (rotated) {
+    ctx.restore(); // undo rotation
+  }
+
+  // HUD overlay (always in screen space)
   drawHUD(ctx, state, canvasWidth, canvasHeight);
 }
