@@ -6,8 +6,8 @@ import {
 import { createInitialState, gameStep, attemptSteal } from './game/physics';
 import { render } from './game/renderer';
 import { AIAgent, PolicyNetwork } from './game/ai';
-import { Trainer, TrainingStats } from './game/training';
-import { listModels, getModel, saveModel, updateModel, deleteModel, SavedModel } from './api';
+import { Trainer } from './game/training';
+import { listModels, getModel, deleteModel, SavedModel, startGpuTraining, stopGpuTraining, getTrainingStatus, TrainingStatus } from './api';
 import './App.css';
 
 type GameMode = 'practice' | 'training' | 'play-ai' | 'admin';
@@ -43,18 +43,15 @@ function App() {
   const [score, setScore] = useState<[number, number]>([0, 0]);
   const [paused, setPaused] = useState(false);
   const [trainingRunning, setTrainingRunning] = useState(false);
-  const [trainingStats, setTrainingStats] = useState<TrainingStats | null>(null);
-  const [trainingSpeed, setTrainingSpeed] = useState(5);
-  const [trainingRinks, setTrainingRinks] = useState(1);
   const [savedModels, setSavedModels] = useState<SavedModel[]>([]);
-  const [saveName, setSaveName] = useState('');
-  const [saving, setSaving] = useState(false);
   const [loadingModel, setLoadingModel] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
   const [trainingLevel, setTrainingLevel] = useState<number | null>(null);
   const [levelModels, setLevelModels] = useState<Record<number, SavedModel | null>>({});
   const [playLevel, setPlayLevel] = useState<number | null>(null);
-  const autoSavedRef = useRef(false);
+
+  const [gpuStatus, setGpuStatus] = useState<TrainingStatus | null>(null);
+  const gpuPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const PADDING = 10;
 
@@ -180,30 +177,6 @@ function App() {
     }
   }, []);
 
-  const handleSave = useCallback(async () => {
-    const net = networkRef.current;
-    if (!net || !saveName.trim()) return;
-    setSaving(true);
-    setStatusMsg('');
-    try {
-      const stats = trainingStats || { episode: 0, blueWins: 0, redWins: 0, draws: 0 };
-      await saveModel({
-        name: saveName.trim(),
-        weights: net.serialize(),
-        episodes: stats.episode,
-        blue_wins: stats.blueWins,
-        red_wins: stats.redWins,
-        draws: stats.draws,
-      });
-      setSaveName('');
-      setStatusMsg('Model saved!');
-      await fetchModels();
-    } catch {
-      setStatusMsg('Failed to save model');
-    }
-    setSaving(false);
-  }, [saveName, trainingStats, fetchModels]);
-
   const handleLoad = useCallback(async (id: number) => {
     setLoadingModel(true);
     setStatusMsg('');
@@ -232,78 +205,67 @@ function App() {
     }
   }, [fetchModels]);
 
-  const autoSaveLevel = useCallback(async (level: number) => {
-    const net = networkRef.current;
-    if (!net) return;
-    const name = modelNameForLevel(level);
-    const stats = trainerRef.current?.stats;
-    const data = {
-      name,
-      weights: net.serialize(),
-      episodes: stats?.episode || 0,
-      blue_wins: stats?.blueWins || 0,
-      red_wins: stats?.redWins || 0,
-      draws: stats?.draws || 0,
-    };
-    try {
-      const existing = savedModels.find(m => m.name === name);
-      if (existing) {
-        await updateModel(existing.id, {
-          weights: data.weights, episodes: data.episodes,
-          blue_wins: data.blue_wins, red_wins: data.red_wins, draws: data.draws,
-        });
-      } else {
-        await saveModel(data);
-      }
-      await fetchModels();
-      setStatusMsg(`Level ${level} saved!`);
-    } catch {
-      setStatusMsg(`Failed to save Level ${level}`);
-    }
-  }, [savedModels, fetchModels]);
-
-  const startLevelTraining = useCallback((level: number) => {
-    try {
-      setTrainingLevel(level);
-      setStatusMsg(`Starting Level ${level} training...`);
-      autoSavedRef.current = false;
-      if (trainerRef.current) trainerRef.current.dispose();
-      const currentLevelModel = levelModels[level];
-      const prevLevel = level > 1 ? levelModels[level - 1] : null;
-
-      const initTrainer = (net?: PolicyNetwork) => {
-        const trainer = new Trainer(undefined, net);
-        if (currentLevelModel) {
-          trainer.stats.episode = currentLevelModel.episodes;
-          trainer.stats.blueWins = currentLevelModel.blue_wins;
-          trainer.stats.redWins = currentLevelModel.red_wins;
-          trainer.stats.draws = currentLevelModel.draws;
+  const startGpuPoll = useCallback(() => {
+    if (gpuPollRef.current) clearInterval(gpuPollRef.current);
+    gpuPollRef.current = setInterval(async () => {
+      try {
+        const status = await getTrainingStatus();
+        setGpuStatus(status);
+        if (status.status === 'completed' || status.status === 'idle' || status.status === 'stopped' || status.status?.startsWith('error')) {
+          if (gpuPollRef.current) clearInterval(gpuPollRef.current);
+          gpuPollRef.current = null;
+          setTrainingRunning(false);
+          if (status.status === 'completed') {
+            setStatusMsg(`Level ${status.level || trainingLevel || '?'} training complete!`);
+            fetchModels();
+          } else if (status.status?.startsWith('error')) {
+            setStatusMsg(`Training error: ${status.status}`);
+          }
         }
-        trainerRef.current = trainer;
-        networkRef.current = trainer.getNetwork();
-        trainer.speed = trainingSpeed;
-        trainer.rinks = trainingRinks;
-        trainer.onStatsUpdate = (s) => setTrainingStats({ ...s });
-        trainer.start();
-        setTrainingRunning(true);
-        setStatusMsg('');
-      };
-
-      if (currentLevelModel?.weights) {
-        getModel(currentLevelModel.id).then(m => {
-          initTrainer(PolicyNetwork.deserialize(m.weights!));
-        }).catch(() => initTrainer());
-      } else if (prevLevel?.weights !== undefined && prevLevel) {
-        getModel(prevLevel.id).then(m => {
-          initTrainer(PolicyNetwork.deserialize(m.weights!));
-        }).catch(() => initTrainer());
-      } else {
-        initTrainer();
+      } catch {
+        // network error, keep polling
       }
+    }, 5000);
+  }, [fetchModels, trainingLevel]);
+
+  const startLevelTraining = useCallback(async (level: number) => {
+    setTrainingLevel(level);
+    setStatusMsg(`Starting Level ${level} GPU training...`);
+    const lvl = AI_LEVELS.find(l => l.level === level);
+    if (!lvl) return;
+
+    const prevLevel = level > 1 ? levelModels[level - 1] : null;
+    const currentModel = levelModels[level];
+    const loadModelId = currentModel?.id?.toString() || prevLevel?.id?.toString();
+
+    try {
+      await startGpuTraining({
+        model_name: modelNameForLevel(level),
+        episodes: lvl.target,
+        save_interval: 50000,
+        level,
+        load_model_id: loadModelId,
+        compat_mode: true,
+      });
+      setTrainingRunning(true);
+      setStatusMsg(`Level ${level} GPU training started! You can leave this page.`);
+      startGpuPoll();
     } catch (err) {
-      setStatusMsg(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      setStatusMsg(`Failed to start training: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [levelModels, trainingSpeed, trainingRinks]);
+  }, [levelModels, startGpuPoll]);
+
+  const handleStopGpuTraining = useCallback(async () => {
+    try {
+      await stopGpuTraining();
+      setTrainingRunning(false);
+      setStatusMsg('Training stopped');
+      if (gpuPollRef.current) clearInterval(gpuPollRef.current);
+      gpuPollRef.current = null;
+    } catch {
+      setStatusMsg('Failed to stop training');
+    }
+  }, []);
 
   const selectPlayLevel = useCallback(async (level: number) => {
     const model = levelModels[level];
@@ -341,10 +303,15 @@ function App() {
       fetchModels();
     }
     if (newMode === 'training') {
-      if (!trainerRef.current) {
-        trainerRef.current = new Trainer(undefined, networkRef.current || undefined);
-        networkRef.current = trainerRef.current.getNetwork();
-      }
+      // Check for ongoing GPU training on server
+      getTrainingStatus().then(status => {
+        setGpuStatus(status);
+        if (status.status === 'training' || status.status === 'starting') {
+          setTrainingRunning(true);
+          setTrainingLevel(status.level || null);
+          startGpuPoll();
+        }
+      }).catch(() => {});
     }
     if (newMode === 'admin') {
       fetchModels();
@@ -352,20 +319,22 @@ function App() {
     setMode(newMode);
     setTrainingRunning(false);
     setStatusMsg('');
-  }, [fetchModels]);
+  }, [fetchModels, startGpuPoll]);
 
-  // Auto-save when training reaches level target
+  // Check for ongoing GPU training on mount
   useEffect(() => {
-    if (!trainingLevel || !trainingStats || autoSavedRef.current) return;
-    const lvl = AI_LEVELS.find(l => l.level === trainingLevel);
-    if (!lvl) return;
-    if (trainingStats.episode >= lvl.target) {
-      autoSavedRef.current = true;
-      if (trainerRef.current) trainerRef.current.stop();
-      setTrainingRunning(false);
-      autoSaveLevel(trainingLevel);
-    }
-  }, [trainingStats, trainingLevel, autoSaveLevel]);
+    getTrainingStatus().then(status => {
+      setGpuStatus(status);
+      if (status.status === 'training' || status.status === 'starting') {
+        setTrainingRunning(true);
+        setTrainingLevel(status.level || null);
+        startGpuPoll();
+      }
+    }).catch(() => {});
+    return () => {
+      if (gpuPollRef.current) clearInterval(gpuPollRef.current);
+    };
+  }, [startGpuPoll]);
 
   // Fetch level models on mount
   useEffect(() => { fetchModels(); }, [fetchModels]);
@@ -449,17 +418,6 @@ function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // Training controls
-  const handleSpeedChange = useCallback((val: number) => {
-    setTrainingSpeed(val);
-    if (trainerRef.current) trainerRef.current.speed = val;
-  }, []);
-
-  const handleRinksChange = useCallback((val: number) => {
-    setTrainingRinks(val);
-    if (trainerRef.current) trainerRef.current.rinks = val;
-  }, []);
-
   // Keyboard events
   useEffect(() => {
     if (mode === 'training' || mode === 'admin') return;
@@ -485,8 +443,6 @@ function App() {
 
   const isPlayMode = mode === 'practice' || (mode === 'play-ai' && !!playLevel);
   const isGameMode = mode === 'practice' || (mode === 'play-ai' && !!playLevel) || mode === 'training';
-  const stats = trainingStats;
-
   return (
     <div className={'app' + (isPortrait ? ' portrait' : '')}>
       {!isPortrait && (
@@ -517,15 +473,7 @@ function App() {
             </div>
           )}
 
-          {mode === 'training' && stats && (
-            <div className="training-stats">
-              <div className="stat"><span className="stat-label">Episodes</span><span className="stat-value">{stats.episode}</span></div>
-              <div className="stat"><span className="stat-label">Blue W</span><span className="stat-value blue">{stats.blueWins}</span></div>
-              <div className="stat"><span className="stat-label">Red W</span><span className="stat-value red">{stats.redWins}</span></div>
-              <div className="stat"><span className="stat-label">Draws</span><span className="stat-value">{stats.draws}</span></div>
-              <div className="stat"><span className="stat-label">Goals/ep</span><span className="stat-value">{stats.avgGoalsPerEp.toFixed(1)}</span></div>
-            </div>
-          )}
+
         </>
       )}
 
@@ -611,17 +559,24 @@ function App() {
 
       {mode === 'training' && (
         <div className="training-levels">
-          <h3>AI Training Levels</h3>
+          <h3>AI Training Levels (GPU)</h3>
           {statusMsg && <div className="status-msg">{statusMsg}</div>}
+          {gpuStatus && gpuStatus.status !== 'idle' && (
+            <div className="gpu-status-banner">
+              <span className="gpu-status-label">GPU: {gpuStatus.status}</span>
+              {gpuStatus.eps_per_sec ? <span>{Math.round(gpuStatus.eps_per_sec)} ep/s</span> : null}
+              {gpuStatus.cost_per_hr ? <span>${gpuStatus.cost_per_hr}/hr</span> : null}
+            </div>
+          )}
           {AI_LEVELS.map(lvl => {
             const model = levelModels[lvl.level];
-            const episodes = trainingLevel === lvl.level && trainingStats ? trainingStats.episode : (model?.episodes || 0);
+            const isGpuActive = trainingRunning && (gpuStatus?.level === lvl.level || trainingLevel === lvl.level);
+            const episodes = isGpuActive && gpuStatus?.episode ? gpuStatus.episode : (model?.episodes || 0);
             const progress = Math.min(1, episodes / lvl.target);
             const isComplete = episodes >= lvl.target;
             const prevComplete = lvl.level === 1 || (levelModels[lvl.level - 1]?.episodes || 0) >= AI_LEVELS[lvl.level - 2]?.target;
-            const isActive = trainingLevel === lvl.level && trainingRunning;
             return (
-              <div key={lvl.level} className={'level-card' + (isComplete ? ' complete' : '') + (isActive ? ' active' : '')}>
+              <div key={lvl.level} className={'level-card' + (isComplete ? ' complete' : '') + (isGpuActive ? ' active' : '')}>
                 <div className="level-header">
                   <span className="level-name">{lvl.name}</span>
                   <span className="level-label">{lvl.label}</span>
@@ -632,45 +587,31 @@ function App() {
                 <div className="level-info">
                   <span>{episodes >= 1000 ? `${(episodes / 1000).toFixed(0)}K` : episodes.toLocaleString()} / {(lvl.target / 1_000_000).toFixed(0)}M episodes</span>
                   {isComplete && <span className="level-done">Done</span>}
-                  {isActive && <span className="level-running">Training...</span>}
+                  {isGpuActive && <span className="level-running">Training on GPU...</span>}
                 </div>
-                {isActive && trainingStats && (
+                {isGpuActive && gpuStatus && (
                   <div className="level-live-stats">
-                    <span>Blue W: {trainingStats.blueWins}</span>
-                    <span>Red W: {trainingStats.redWins}</span>
-                    <span>Draws: {trainingStats.draws}</span>
-                    <span>Goals/ep: {trainingStats.avgGoalsPerEp.toFixed(1)}</span>
+                    <span>Blue W: {gpuStatus.blue_wins || 0}</span>
+                    <span>Red W: {gpuStatus.red_wins || 0}</span>
+                    <span>Draws: {gpuStatus.draws || 0}</span>
+                    {gpuStatus.eps_per_sec ? <span>{Math.round(gpuStatus.eps_per_sec)} ep/s</span> : null}
                   </div>
                 )}
-                {!isComplete && prevComplete && (
-                  isActive ? (
-                    <button className="ctrl-btn stop-btn" onClick={() => { trainerRef.current?.stop(); setTrainingRunning(false); }}>
-                      Stop Training
-                    </button>
-                  ) : (
-                    <button className="ctrl-btn start-btn" onClick={() => startLevelTraining(lvl.level)}>
-                      {model ? 'Resume Training' : 'Start Training'}
-                    </button>
-                  )
+                {!isComplete && prevComplete && !trainingRunning && (
+                  <button className="ctrl-btn start-btn" onClick={() => startLevelTraining(lvl.level)}>
+                    {model ? 'Resume Training' : 'Start Training'}
+                  </button>
+                )}
+                {isGpuActive && (
+                  <button className="ctrl-btn stop-btn" onClick={handleStopGpuTraining}>
+                    Stop Training
+                  </button>
                 )}
                 {!isComplete && !prevComplete && <span className="level-locked">Complete Level {lvl.level - 1} first</span>}
               </div>
             );
           })}
-          <div className="training-controls">
-            <div className="speed-control">
-              <label>Rinks: {trainingRinks}</label>
-              <input type="range" min={1} max={50} value={trainingRinks} onChange={(e) => handleRinksChange(Number(e.target.value))} />
-            </div>
-            <div className="speed-control">
-              <label>Speed: {trainingSpeed}x</label>
-              <input type="range" min={1} max={50} value={trainingSpeed} onChange={(e) => handleSpeedChange(Number(e.target.value))} />
-            </div>
-          </div>
-          <div className="save-bar">
-            <input type="text" className="save-input" placeholder="Custom save name..." value={saveName} onChange={(e) => setSaveName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleSave(); }} />
-            <button className="ctrl-btn save-btn" onClick={handleSave} disabled={saving || !saveName.trim() || !networkRef.current}>{saving ? 'Saving...' : 'Save'}</button>
-          </div>
+          <p className="gpu-hint">Training runs on a remote GPU. You can close this page and come back later.</p>
         </div>
       )}
 
