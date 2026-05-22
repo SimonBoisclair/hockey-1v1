@@ -262,40 +262,47 @@ function App() {
     }
   }, [savedModels, fetchModels]);
 
-  const startLevelTraining = useCallback(async (level: number) => {
-    setTrainingLevel(level);
-    autoSavedRef.current = false;
-    const prevLevel = level > 1 ? levelModels[level - 1] : null;
-    const currentLevelModel = levelModels[level];
-    let net: PolicyNetwork | undefined;
-    if (currentLevelModel?.weights) {
-      try {
-        const fullModel = await getModel(currentLevelModel.id);
-        net = PolicyNetwork.deserialize(fullModel.weights!);
-        setStatusMsg(`Resuming Level ${level} training...`);
-      } catch { /* fallthrough */ }
-    } else if (prevLevel?.weights !== undefined && prevLevel) {
-      try {
-        const fullModel = await getModel(prevLevel.id);
-        net = PolicyNetwork.deserialize(fullModel.weights!);
-        setStatusMsg(`Starting Level ${level} from Level ${level - 1}...`);
-      } catch { /* fallthrough */ }
+  const startLevelTraining = useCallback((level: number) => {
+    try {
+      setTrainingLevel(level);
+      setStatusMsg(`Starting Level ${level} training...`);
+      autoSavedRef.current = false;
+      if (trainerRef.current) trainerRef.current.dispose();
+      const currentLevelModel = levelModels[level];
+      const prevLevel = level > 1 ? levelModels[level - 1] : null;
+
+      const initTrainer = (net?: PolicyNetwork) => {
+        const trainer = new Trainer(undefined, net);
+        if (currentLevelModel) {
+          trainer.stats.episode = currentLevelModel.episodes;
+          trainer.stats.blueWins = currentLevelModel.blue_wins;
+          trainer.stats.redWins = currentLevelModel.red_wins;
+          trainer.stats.draws = currentLevelModel.draws;
+        }
+        trainerRef.current = trainer;
+        networkRef.current = trainer.getNetwork();
+        trainer.speed = trainingSpeed;
+        trainer.rinks = trainingRinks;
+        trainer.onStatsUpdate = (s) => setTrainingStats({ ...s });
+        trainer.start();
+        setTrainingRunning(true);
+        setStatusMsg('');
+      };
+
+      if (currentLevelModel?.weights) {
+        getModel(currentLevelModel.id).then(m => {
+          initTrainer(PolicyNetwork.deserialize(m.weights!));
+        }).catch(() => initTrainer());
+      } else if (prevLevel?.weights !== undefined && prevLevel) {
+        getModel(prevLevel.id).then(m => {
+          initTrainer(PolicyNetwork.deserialize(m.weights!));
+        }).catch(() => initTrainer());
+      } else {
+        initTrainer();
+      }
+    } catch (err) {
+      setStatusMsg(`Error: ${err instanceof Error ? err.message : String(err)}`);
     }
-    if (trainerRef.current) trainerRef.current.dispose();
-    const trainer = new Trainer(undefined, net);
-    if (currentLevelModel) {
-      trainer.stats.episode = currentLevelModel.episodes;
-      trainer.stats.blueWins = currentLevelModel.blue_wins;
-      trainer.stats.redWins = currentLevelModel.red_wins;
-      trainer.stats.draws = currentLevelModel.draws;
-    }
-    trainerRef.current = trainer;
-    networkRef.current = trainer.getNetwork();
-    trainer.speed = trainingSpeed;
-    trainer.rinks = trainingRinks;
-    trainer.onStatsUpdate = (s) => setTrainingStats({ ...s });
-    trainer.start();
-    setTrainingRunning(true);
   }, [levelModels, trainingSpeed, trainingRinks]);
 
   const selectPlayLevel = useCallback(async (level: number) => {
@@ -523,26 +530,37 @@ function App() {
       )}
 
       {isPortrait ? (
-        <div className={'game-area' + (mode === 'training' || mode === 'admin' || (mode === 'play-ai' && !playLevel) ? ' no-canvas' : '')}>
-          {isGameMode && mode !== 'training' && (
-            <div className="canvas-container" ref={containerRef}>
-              <canvas ref={canvasRef} onClick={handleCanvasClick} onTouchStart={handleCanvasTouch} />
-            </div>
-          )}
-          <div className="portrait-sidebar">
-            <button className={'sidebar-btn' + (mode === 'practice' ? ' active' : '')} onClick={() => switchMode('practice')}>Practice</button>
-            <button className={'sidebar-btn' + (mode === 'training' ? ' active' : '')} onClick={() => switchMode('training')}>Train</button>
-            <button className={'sidebar-btn' + (mode === 'play-ai' ? ' active' : '')} onClick={() => switchMode('play-ai')}>Play AI</button>
-            <button className={'sidebar-btn' + (mode === 'admin' ? ' active' : '')} onClick={() => switchMode('admin')}>Models</button>
-            {isPlayMode && (
-              <div className="sidebar-score">
-                <span className="team-blue">{score[0]}</span>
-                <span className="score-dash">&ndash;</span>
-                <span className="team-red">{score[1]}</span>
+        (() => {
+          const m = mode as string;
+          const showCanvas = isGameMode && mode !== 'training';
+          return showCanvas ? (
+            <div className="game-area">
+              <div className="canvas-container" ref={containerRef}>
+                <canvas ref={canvasRef} onClick={handleCanvasClick} onTouchStart={handleCanvasTouch} />
               </div>
-            )}
-          </div>
-        </div>
+              <div className="portrait-sidebar">
+                <button className={'sidebar-btn' + (m === 'practice' ? ' active' : '')} onClick={() => switchMode('practice')}>Practice</button>
+                <button className={'sidebar-btn' + (m === 'training' ? ' active' : '')} onClick={() => switchMode('training')}>Train</button>
+                <button className={'sidebar-btn' + (m === 'play-ai' ? ' active' : '')} onClick={() => switchMode('play-ai')}>Play AI</button>
+                <button className={'sidebar-btn' + (m === 'admin' ? ' active' : '')} onClick={() => switchMode('admin')}>Models</button>
+                {isPlayMode && (
+                  <div className="sidebar-score">
+                    <span className="team-blue">{score[0]}</span>
+                    <span className="score-dash">&ndash;</span>
+                    <span className="team-red">{score[1]}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="portrait-nav-bar">
+              <button className={'nav-btn' + (m === 'practice' ? ' active' : '')} onClick={() => switchMode('practice')}>Practice</button>
+              <button className={'nav-btn' + (m === 'training' ? ' active' : '')} onClick={() => switchMode('training')}>Train</button>
+              <button className={'nav-btn' + (m === 'play-ai' ? ' active' : '')} onClick={() => switchMode('play-ai')}>Play AI</button>
+              <button className={'nav-btn' + (m === 'admin' ? ' active' : '')} onClick={() => switchMode('admin')}>Models</button>
+            </div>
+          );
+        })()
       ) : (
         isGameMode && (
           <div className="game-area">

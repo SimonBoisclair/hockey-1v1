@@ -696,18 +696,30 @@ kbd {
   min-height: 0;
 }
 
-.portrait .game-area.no-canvas {
-  flex: 0;
+.portrait-nav-bar {
+  display: flex;
   flex-direction: row;
-  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px;
+  flex-shrink: 0;
 }
 
-.portrait .game-area.no-canvas .portrait-sidebar {
-  flex-direction: row;
-  width: auto;
-  min-width: 0;
-  gap: 4px;
-  padding: 6px;
+.nav-btn {
+  padding: 8px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #aaa;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nav-btn.active {
+  background: rgba(56, 189, 248, 0.2);
+  border-color: rgba(56, 189, 248, 0.5);
+  color: #fff;
 }
 
 .portrait-sidebar {
