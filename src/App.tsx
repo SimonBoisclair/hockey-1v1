@@ -245,7 +245,7 @@ function App() {
         save_interval: 50000,
         level,
         load_model_id: loadModelId,
-        compat_mode: true,
+        compat_mode: false,
       });
       setTrainingRunning(true);
       setStatusMsg(`Level ${level} GPU training started! You can leave this page.`);
